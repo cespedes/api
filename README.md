@@ -1,2 +1,3 @@
 # api
-Framework for building API servers in Go
+
+`api` is a Go library for building RESTful API servers
