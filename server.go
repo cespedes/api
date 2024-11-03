@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,16 +10,59 @@ import (
 	"reflect"
 )
 
+// Server is an HTTP request multiplexer.
 type Server struct {
 	debug    bool
 	mux      *http.ServeMux
 	patterns []string
+	values   map[string]any // to be added to all the requests
 }
 
+// Set assigns a value to a given key for all the requests
+// in a given server.
+// Calls to Server.Set must not be concurrent.
+func (s *Server) Set(key string, value any) {
+	if s.values == nil {
+		s.values = make(map[string]any)
+	}
+	s.values[key] = value
+}
+
+// Request encapsulates a *http.Request to be able to use the Get and Set methods.
 type Request struct {
-	http.Request
+	server *Server
+	*http.Request
 }
 
+type contextServerKey struct{}
+
+// Set assigns a value to a given key for this Request.
+func (r *Request) Set(key string, value any) {
+	m, ok := r.Request.Context().Value(contextServerKey{}).(map[string]any)
+	if !ok {
+		m = make(map[string]any)
+	}
+	m[key] = value
+	r.Request = r.Request.WithContext(context.WithValue(r.Request.Context(), contextServerKey{}, m))
+}
+
+// Get retrieves assigns a value from a given in this Request.
+func (r *Request) Get(key string) any {
+	m, ok := r.Request.Context().Value(contextServerKey{}).(map[string]any)
+	if !ok {
+		return nil
+	}
+	return m[key]
+}
+
+/*
+func (r *Request) GetString(key string) string {
+	s, _ := r.Get(key).(string)
+	return s
+}
+*/
+
+// NewServer allocates and returns a new Server.
 func NewServer() *Server {
 	var s Server
 	s.mux = http.NewServeMux()
@@ -26,9 +70,18 @@ func NewServer() *Server {
 	return &s
 }
 
+// ServeHTTP creates a Request, runs the middleware functions,
+// and dispatches the HTTP request to the correct handler from
+// those registered in the server.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.debug {
 		log.Printf("api.Server.ServeHTTP: new request: %v", r.URL)
+	}
+	req := Request{
+		Request: r,
+	}
+	for key, val := range s.values {
+		req.Set(key, val)
 	}
 	s.mux.ServeHTTP(w, r)
 }
@@ -169,11 +222,11 @@ func apiError(f any, a ...any) error {
 			err = errors.New("not found")
 		}
 	*/
-	return CodeError(code, err)
+	return HTTPError(code, err)
 }
 
-// CodeError returns an error with an embedded HTTP status code
-func CodeError(code int, f any, a ...any) error {
+// HTTPError returns an error with an embedded HTTP status code
+func HTTPError(code int, f any, a ...any) error {
 	var err error
 	if e, ok := f.(error); ok {
 		err = e
@@ -203,7 +256,7 @@ func httpError(w http.ResponseWriter, f any, a ...any) {
 
 // httpError sends a HTTP error as a response
 func httpCodeError(w http.ResponseWriter, code int, f any, a ...any) {
-	err := CodeError(code, f, a...).(errHTTPStatus)
+	err := HTTPError(code, f, a...).(errHTTPStatus)
 	httpError(w, err)
 }
 
