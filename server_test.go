@@ -29,7 +29,7 @@ func TestServerHandle(t *testing.T) {
 	shouldNotPanic := func(h any) {
 		defer func() {
 			if x := recover(); x != nil {
-				t.Errorf("Handle() panic'ed when it should not have: %v", x)
+				t.Errorf("Handle() panic'ed with type %T when it should not have: %v", h, x)
 			}
 		}()
 		s.Handle(fmt.Sprintf("/test.%d", testnum), h)
