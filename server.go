@@ -148,6 +148,31 @@ func checkHandler(handler any) {
 	}
 }
 
+// handleWithPerm is a wrapper that executes the provided handler unless all the
+// peroFuncs fail
+func handleWithPerm(handler http.Handler, permFuncs ...func(*Request) bool) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		req := &Request{r}
+
+		// if there are permFuncs, at least one of them must succeed
+		if len(permFuncs) > 0 {
+			allowed := false
+			for _, p := range permFuncs {
+				if p(req) {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				httpCodeError(w, http.StatusUnauthorized, "permission denied")
+				return
+			}
+		}
+
+		handler.ServeHTTP(w, r)
+	})
+}
+
 // Handle registers a handle in the server.
 //
 // handler must be a function with one of these signatures:
@@ -155,6 +180,8 @@ func checkHandler(handler any) {
 //   - func (http.ResponseWriter, *http.Request)
 //   - func [Input, Output any] (*Request, Input) (Output, error)
 //   - func [Output any] (*Request) (Output, error)
+//
+// If there are permFuncs, at least one of them must succeed.
 func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*Request) bool) {
 	if s == nil {
 		panic("api.Handle: called with nil Server")
@@ -162,11 +189,17 @@ func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*Request)
 	s.patterns = append(s.patterns, pattern)
 	checkHandler(handler)
 	if h, ok := handler.(http.Handler); ok {
-		s.mux.Handle(pattern, h)
+		if s.debug {
+			log.Printf("Added new handler: pattern=%q (%T)", pattern, handler)
+		}
+		s.mux.Handle(pattern, handleWithPerm(h, permFuncs...))
 		return
 	}
 	if f, ok := handler.(func(http.ResponseWriter, *http.Request)); ok {
-		s.mux.HandleFunc(pattern, f)
+		if s.debug {
+			log.Printf("Added new handler: pattern=%q (%T)", pattern, handler)
+		}
+		s.mux.Handle(pattern, handleWithPerm(http.HandlerFunc(f), permFuncs...))
 		return
 	}
 	t := reflect.TypeOf(handler)
