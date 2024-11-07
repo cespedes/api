@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 )
@@ -13,18 +12,14 @@ func TestNewServer(t *testing.T) {
 	}
 }
 
-func TestServerHandle(t *testing.T) {
-	s := NewServer()
-
-	testnum := 1
+func TestHandler(t *testing.T) {
 	shouldPanic := func(h any) {
 		defer func() {
 			if recover() == nil {
 				t.Errorf("Handle() did not panic when handler's type is %T", h)
 			}
 		}()
-		s.Handle(fmt.Sprintf("/test.%d", testnum), h)
-		testnum++
+		_ = Handler(h)
 	}
 	shouldNotPanic := func(h any) {
 		defer func() {
@@ -32,8 +27,7 @@ func TestServerHandle(t *testing.T) {
 				t.Errorf("Handle() panic'ed with type %T when it should not have: %v", h, x)
 			}
 		}()
-		s.Handle(fmt.Sprintf("/test.%d", testnum), h)
-		testnum++
+		_ = Handler(h)
 	}
 
 	// The second argument to Handle (the handler) should be a function:
