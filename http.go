@@ -1,10 +1,13 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/lib/pq"
 )
 
 // Errors...:
@@ -38,13 +41,11 @@ func apiError(f any, a ...any) error {
 	}
 
 	code := http.StatusBadRequest
-	/*
-		switch {
-		case ErrorIsNotFound(err):
-			code = http.StatusNotFound
-			err = errors.New("not found")
-		}
-	*/
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		code = http.StatusNotFound
+		err = errors.New("not found")
+	}
 	return HTTPError(code, err)
 }
 
@@ -68,12 +69,10 @@ func HTTPError(code int, f any, a ...any) error {
 // httpError sends a HTTP error as a response
 func httpError(w http.ResponseWriter, f any, a ...any) {
 	err := apiError(f, a...).(errHTTPStatus)
-	/*
-		var perr *pq.Error
-		if errors.As(err, &perr) {
-			w.Header().Set("X-SQL-Error", fmt.Sprintf("%s %s", perr.Code, perr.Message))
-		}
-	*/
+	var perr *pq.Error
+	if errors.As(err, &perr) {
+		w.Header().Set("X-SQL-Error", fmt.Sprintf("%s %s", perr.Code, perr.Message))
+	}
 	httpMessage(w, err.Status, "error", err.Error())
 }
 
