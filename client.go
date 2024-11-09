@@ -135,7 +135,7 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 		decoder.DisallowUnknownFields()
 	}
 	if err := decoder.Decode(dest); err != nil {
-		return fmt.Errorf("parsing body: %w", err)
+		return err
 	}
 	return nil
 }
