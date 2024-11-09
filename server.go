@@ -185,6 +185,9 @@ func handleWithPerm(handler http.Handler, permFuncs ...func(*Request) bool) http
 //   - func [Output any] (*Request) (Output, error)
 //
 // If there are permFuncs, at least one of them must succeed.
+//
+// If the error returned by the function implements HTTPStatus,
+// it is used as the HTTP Status code to be returned.
 func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*Request) bool) {
 	if s == nil {
 		panic("api.Handle: called with nil Server")
@@ -206,6 +209,9 @@ func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*Request)
 //   - func [Output any] (*Request) (Output, error)
 //
 // If there are permFuncs, at least one of them must succeed.
+//
+// If the error returned by the function implements HTTPStatus,
+// it is used as the HTTP Status code to be returned.
 func Handler(handler any, permFuncs ...func(*Request) bool) http.Handler {
 	checkHandler(handler)
 	if h, ok := handler.(http.Handler); ok {

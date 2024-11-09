@@ -6,9 +6,29 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-
-	"github.com/lib/pq"
 )
+
+// Exported functions:
+//   - func HTTPError(code int, f any, a ...any) error
+
+// Exported types:
+//   - type HTTPStatus interface { ... }
+
+// These functions are used by other files in this package:
+//   - httpError()
+//   - httpCodeError()
+//   - httpInfo()
+//   - httpJSON()
+
+// Dependencies:
+//   - HTTPError     -> errHTTPStatus
+//   - HTTPStatus    -> (none)
+//   - httpError     -> httpMessage
+//   - httpCodeError -> HTTPError, httpError
+//   - httpInfo      -> httpMessage
+//   - httpJSON      -> (none)
+//   - apiError      -> errHTTPStatus, HTTPError
+//   - httpMessage   -> (none)
 
 // Errors...:
 type errHTTPStatus struct {
@@ -24,7 +44,11 @@ func (e errHTTPStatus) Unwrap() error {
 	return e.Err
 }
 
-// Error returns an ErrHTTPStatus from another error or a printf-like string.
+func (e errHTTPStatus) HTTPStatus() int {
+	return e.Status
+}
+
+// Error returns an errHTTPStatus from another error or a printf-like string.
 // The default HTTP status code is BadRequest.
 func apiError(f any, a ...any) error {
 	if err, ok := f.(errHTTPStatus); ok {
@@ -66,14 +90,41 @@ func HTTPError(code int, f any, a ...any) error {
 	}
 }
 
-// httpError sends a HTTP error as a response
+type HTTPStatus interface {
+	HTTPStatus() int
+}
+
+// httpError sends a HTTP error as a response.
+//
+// If the error returned by the function implements HTTPStatus,
+// it is used as the HTTP Status code to be returned.
 func httpError(w http.ResponseWriter, f any, a ...any) {
-	err := apiError(f, a...).(errHTTPStatus)
-	var perr *pq.Error
-	if errors.As(err, &perr) {
-		w.Header().Set("X-SQL-Error", fmt.Sprintf("%s %s", perr.Code, perr.Message))
+	var err error
+	if e, ok := f.(error); ok {
+		err = e
+	} else if s, ok := f.(string); ok {
+		err = fmt.Errorf(s, a...)
+	} else {
+		err = errors.New(fmt.Sprint(f))
 	}
-	httpMessage(w, err.Status, "error", err.Error())
+
+	var es interface{ SQLState() string }
+	if errors.As(err, &es) {
+		w.Header().Set("X-SQL-Error", fmt.Sprintf("%s %s", es.SQLState(), err.Error()))
+	}
+
+	var eh HTTPStatus
+
+	code := http.StatusBadRequest
+	switch {
+	case errors.As(err, &eh):
+		code = eh.HTTPStatus()
+	case errors.Is(err, sql.ErrNoRows):
+		code = http.StatusNotFound
+		err = errors.New("not found")
+	}
+
+	httpMessage(w, code, "error", err.Error())
 }
 
 // httpError sends a HTTP error as a response
@@ -105,5 +156,4 @@ func httpJSON(w http.ResponseWriter, output any, codes ...int) {
 	if err != nil {
 		fmt.Fprintf(w, "{\"error\": %q}\n", err.Error())
 	}
-
 }
