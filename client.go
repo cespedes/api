@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 )
@@ -16,11 +15,12 @@ const (
 
 // Client is a way to connect to 3rd party API servers.
 type Client struct {
-	apiEndPoint string
-	apiToken    string
-	headerToken string // What header should we use to send the token (eg, "Authorization")
-	tokenPrefix string // What to send before the token (eg, "Bearer", "Basic"...)
-	paramToken  string // What query parameter should we use to send the token (eg, "private_token")
+	apiEndPoint           string
+	apiToken              string
+	headerToken           string // What header should we use to send the token (eg, "Authorization")
+	tokenPrefix           string // What to send before the token (eg, "Bearer", "Basic"...)
+	paramToken            string // What query parameter should we use to send the token (eg, "private_token")
+	disallowUnknownFields bool
 }
 
 // NewClient creates a new Client ready to use.
@@ -49,6 +49,14 @@ func (c *Client) WithTokenPrefix(tp string) *Client {
 // WithParamToken specifies which query parameter to use when sending a token.
 func (c *Client) WithParamToken(pt string) *Client {
 	c.paramToken = pt
+	return c
+}
+
+// DisallowUnknownFields causes the JSON decoder to return an error when the
+// destination is a struct and the input contains object keys which do not
+// match any non-ignored, exported fields in the destination.
+func (c *Client) DisallowUnknownFields() *Client {
+	c.disallowUnknownFields = true
 	return c
 }
 
@@ -107,16 +115,13 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 		return fmt.Errorf("api: %v", err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
 	if resp.StatusCode >= 400 {
 		var foo struct {
 			Error string
 		}
-		err = json.Unmarshal(body, &foo)
-		if err != nil {
+		decoder := json.NewDecoder(resp.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(dest); err != nil {
 			return fmt.Errorf("%s", resp.Status)
 		}
 		return fmt.Errorf("%s: %s", resp.Status, foo.Error)
@@ -125,9 +130,12 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 		var foo any
 		dest = &foo
 	}
-	err = json.Unmarshal(body, dest)
-	if err != nil {
-		return fmt.Errorf("invalid JSON: %q", string(body))
+	decoder := json.NewDecoder(resp.Body)
+	if c.disallowUnknownFields {
+		decoder.DisallowUnknownFields()
+	}
+	if err := decoder.Decode(dest); err != nil {
+		return fmt.Errorf("parsing body: %w", err)
 	}
 	return nil
 }
