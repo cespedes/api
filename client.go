@@ -30,34 +30,44 @@ func NewClient(apiEndPoint string) *Client {
 
 // WithToken adds a token to a Client.
 func (c *Client) WithToken(tk string) *Client {
-	c.apiToken = tk
-	return c
+	c2 := new(Client)
+	*c2 = *c
+	c2.apiToken = tk
+	return c2
 }
 
 // WithHeaderToken specifies which Header line to use when sending a token.
 func (c *Client) WithHeaderToken(ht string) *Client {
-	c.headerToken = ht
-	return c
+	c2 := new(Client)
+	*c2 = *c
+	c2.headerToken = ht
+	return c2
 }
 
 // WithTokenPrefix adds an optional prefix to the token in the Header line.
 func (c *Client) WithTokenPrefix(tp string) *Client {
-	c.tokenPrefix = tp
-	return c
+	c2 := new(Client)
+	*c2 = *c
+	c2.tokenPrefix = tp
+	return c2
 }
 
 // WithParamToken specifies which query parameter to use when sending a token.
 func (c *Client) WithParamToken(pt string) *Client {
-	c.paramToken = pt
-	return c
+	c2 := new(Client)
+	*c2 = *c
+	c2.paramToken = pt
+	return c2
 }
 
 // DisallowUnknownFields causes the JSON decoder to return an error when the
 // destination is a struct and the input contains object keys which do not
 // match any non-ignored, exported fields in the destination.
 func (c *Client) DisallowUnknownFields() *Client {
-	c.disallowUnknownFields = true
-	return c
+	c2 := new(Client)
+	*c2 = *c
+	c2.disallowUnknownFields = true
+	return c2
 }
 
 // Request makes a HTTP request to the API.
