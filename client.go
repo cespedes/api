@@ -79,7 +79,7 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 	headerToken, tokenPrefix := c.headerToken, c.tokenPrefix
 	if c.apiToken != "" && headerToken == "" && c.paramToken == "" {
 		headerToken = defaultHeaderToken
-		if tokenPrefix != "" {
+		if tokenPrefix == "" {
 			tokenPrefix = defaultTokenPrefix
 		}
 	}
