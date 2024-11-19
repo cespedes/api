@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 )
@@ -21,6 +22,7 @@ type Client struct {
 	tokenPrefix           string // What to send before the token (eg, "Bearer", "Basic"...)
 	paramToken            string // What query parameter should we use to send the token (eg, "private_token")
 	disallowUnknownFields bool
+	unixSocket            string
 }
 
 // NewClient creates a new Client ready to use.
@@ -67,6 +69,15 @@ func (c *Client) DisallowUnknownFields() *Client {
 	c2 := new(Client)
 	*c2 = *c
 	c2.disallowUnknownFields = true
+	return c2
+}
+
+// WithUnixSocket causes the client to connect through this Unix domain socket,
+// instead of using the network.
+func (c *Client) WithUnixSocket(socket string) *Client {
+	c2 := new(Client)
+	*c2 = *c
+	c2.unixSocket = socket
 	return c2
 }
 
@@ -120,6 +131,13 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 		req.Header.Set(headerToken, token)
 	}
 	client := &http.Client{}
+	if c.unixSocket != "" {
+		client.Transport = &http.Transport{
+			Dial: func(proto, addr string) (conn net.Conn, err error) {
+				return net.Dial("unix", c.unixSocket)
+			},
+		}
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("api: %v", err)
