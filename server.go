@@ -223,9 +223,9 @@ func Handler(handler any, permFuncs ...func(*Request) bool) http.Handler {
 	t := reflect.TypeOf(handler)
 	v := reflect.ValueOf(handler)
 	nargs := t.NumIn()
-	var input any
+	var tinput reflect.Type
 	if nargs == 2 {
-		input = reflect.New(t.In(1)).Interface()
+		tinput = t.In(1)
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req := &Request{r}
@@ -243,6 +243,7 @@ func Handler(handler any, permFuncs ...func(*Request) bool) http.Handler {
 			}
 			decoder := json.NewDecoder(r.Body)
 			decoder.DisallowUnknownFields()
+			input := reflect.New(tinput).Interface()
 			if err := decoder.Decode(&input); err != nil {
 				httpError(w, "parsing body: %w", err)
 				return
