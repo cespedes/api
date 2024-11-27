@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"reflect"
 	"sync"
+
+	"golang.org/x/net/websocket"
 )
 
 // Server is an HTTP request multiplexer.
@@ -176,18 +178,10 @@ func handleWithPerm(handler http.Handler, permFuncs ...func(*Request) bool) http
 	})
 }
 
-// Handle registers a handler in the server.
+// Handle registers a handler for one pattern in the server.
 //
-// handler must be a function with one of these signatures:
-//   - http.Handler
-//   - func (http.ResponseWriter, *http.Request)
-//   - func [Input, Output any] (*Request, Input) (Output, error)
-//   - func [Output any] (*Request) (Output, error)
-//
-// If there are permFuncs, at least one of them must succeed.
-//
-// If the error returned by the function implements HTTPStatus,
-// it is used as the HTTP Status code to be returned.
+// The function to be called when the server receives
+// a petition matching the pattern will be Handler(handler, permFuncs...)
 func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*Request) bool) {
 	if s == nil {
 		panic("api.Handle: called with nil Server")
@@ -200,7 +194,7 @@ func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*Request)
 	}
 }
 
-// Handler registers a http.Handler from a handler function.
+// Handler returns a http.Handler from a handler function.
 //
 // handler must be a function with one of these signatures:
 //   - http.Handler
@@ -273,5 +267,49 @@ func Handler(handler any, permFuncs ...func(*Request) bool) http.Handler {
 			return
 		}
 		httpJSON(w, output)
+	})
+}
+
+// Conn represents a Websocket connection.
+type Conn struct {
+	conn *websocket.Conn
+}
+
+// Read implements the io.Reader interface: it reads data of a frame from
+// the WebSocket connection. if msg is not large enough for the frame data,
+// it fills the msg and next Read will read the rest of the frame data.
+// it reads Text frame or Binary frame.
+func (ws *Conn) Read(msg []byte) (n int, err error) {
+	return ws.conn.Read(msg)
+}
+
+// Write implements the io.Writer interface: it writes data as a frame to the
+// WebSocket connection.
+func (ws *Conn) Write(msg []byte) (n int, err error) {
+	return ws.conn.Write(msg)
+}
+
+// HandlerWS returns a handler that tries to establish a Websocket connection,
+// and calls handlerWS on success.  If it does not success, and handlerOther
+// is not nil, it uses that other handler.
+func HandlerWS(handler func(*Request, *Conn), handlerOther any) http.Handler {
+	if handlerOther != nil {
+		checkHandler(handlerOther)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Connection") != "Upgrade" || r.Header.Get("Upgrade") != "websocket" {
+			if handlerOther != nil {
+				Handler(handlerOther).ServeHTTP(w, r)
+				return
+			}
+			http.Error(w, "Bad Request: needs websocket connection", http.StatusBadRequest)
+			return
+		}
+		h := websocket.Server{Handler: func(ws *websocket.Conn) {
+			conn := &Conn{ws}
+			req := &Request{r}
+			handler(req, conn)
+		}}
+		h.ServeHTTP(w, r)
 	})
 }
