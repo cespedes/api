@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"reflect"
+	"strings"
 	"sync"
 
 	"golang.org/x/net/websocket"
@@ -52,6 +54,57 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // This should only be called before the first call to ServeHTTP.
 func (s *Server) AddMiddleware(f func(next http.Handler) http.Handler) {
 	s.middlewares = append(s.middlewares, f)
+}
+
+// Serve accepts incoming connections on the specified address(es)
+// and handles each connection in a goroutine.
+//
+// The addresses can have the form "network!addr" or just "addr",
+// in which case the network is inferred
+// ("unix" if the addr is a filename beginning with "/",
+// or "tcp" if the addr is "host:port").
+//
+// Serve always returns a non-nil error.
+func (s *Server) Serve(addrs ...string) error {
+	if len(addrs) == 0 {
+		return errors.New("Serve: no addresses to listen for connections")
+	}
+	var listeners []net.Listener
+	errs := make(chan error)
+	for _, ad := range addrs {
+		network, addr, found := strings.Cut(ad, "!")
+		if !found {
+			if strings.HasPrefix(ad, "/") {
+				network = "unix"
+				addr = ad
+			} else if strings.Contains(ad, ":") {
+				network = "tcp"
+				addr = ad
+			} else {
+				for _, l := range listeners {
+					l.Close()
+				}
+				return errors.New("Serve: " + ad + ": unrecognized address")
+			}
+		}
+
+		l, err := net.Listen(network, addr)
+		if err != nil {
+			for _, l = range listeners {
+				l.Close()
+			}
+			return err
+		}
+		listeners = append(listeners, l)
+		go func() {
+			errs <- http.Serve(l, s)
+		}()
+	}
+	err := <-errs
+	for _, l := range listeners {
+		l.Close()
+	}
+	return err
 }
 
 // Set assigns a value to a given key for all the requests
