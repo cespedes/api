@@ -137,6 +137,11 @@ func httpMessage(w http.ResponseWriter, code int, label string, msg string) {
 
 // Output sends a JSON-encoded output.
 func Output(w http.ResponseWriter, output any) {
+	if err, ok := output.(error); ok {
+		httpError(w, err)
+		return
+	}
+
 	// if the returned type is a string, output it as a "info" message:
 	if s, ok := output.(string); ok {
 		httpMessage(w, http.StatusOK, "info", s)
