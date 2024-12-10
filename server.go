@@ -56,6 +56,8 @@ func (s *Server) AddMiddleware(f func(next http.Handler) http.Handler) {
 	s.middlewares = append(s.middlewares, f)
 }
 
+type contextListenAddress struct{}
+
 // Serve accepts incoming connections on the specified address(es)
 // and handles each connection in a goroutine.
 //
@@ -97,7 +99,10 @@ func (s *Server) Serve(addrs ...string) error {
 		}
 		listeners = append(listeners, l)
 		go func() {
-			errs <- http.Serve(l, s)
+			errs <- http.Serve(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r2 := r.WithContext(context.WithValue(r.Context(), contextListenAddress{}, ad))
+				s.ServeHTTP(w, r2)
+			}))
 		}()
 	}
 	err := <-errs
@@ -105,6 +110,13 @@ func (s *Server) Serve(addrs ...string) error {
 		l.Close()
 	}
 	return err
+}
+
+// GetListenAddress returns the address used by Serve in the execution of this Request.
+func GetListenAddress(r *http.Request) string {
+	c := r.Context()
+	la, _ := c.Value(contextListenAddress{}).(string)
+	return la
 }
 
 // Set assigns a value to a given key for all the requests
@@ -308,18 +320,7 @@ func Handler(handler any, permFuncs ...func(*Request) bool) http.Handler {
 			return
 		}
 
-		// if the returned type is a string, output it as a "info" message:
-		if s, ok := output.(string); ok {
-			httpInfo(w, s)
-			return
-		}
-
-		// if the returned type is a []byte, output it directly:
-		if b, ok := output.([]byte); ok {
-			w.Write(b)
-			return
-		}
-		httpJSON(w, output)
+		Output(w, output)
 	})
 }
 

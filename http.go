@@ -17,16 +17,12 @@ import (
 // These functions are used by other files in this package:
 //   - httpError()
 //   - httpCodeError()
-//   - httpInfo()
-//   - httpJSON()
 
 // Dependencies:
 //   - HTTPError     -> errHTTPStatus
 //   - HTTPStatus    -> (none)
 //   - httpError     -> httpMessage
 //   - httpCodeError -> HTTPError, httpError
-//   - httpInfo      -> httpMessage
-//   - httpJSON      -> (none)
 //   - apiError      -> errHTTPStatus, HTTPError
 //   - httpMessage   -> (none)
 
@@ -127,14 +123,10 @@ func httpError(w http.ResponseWriter, f any, a ...any) {
 	httpMessage(w, code, "error", err.Error())
 }
 
-// httpError sends a HTTP error as a response
+// httpCodeError sends a HTTP error as a response.
 func httpCodeError(w http.ResponseWriter, code int, f any, a ...any) {
 	err := HTTPError(code, f, a...).(errHTTPStatus)
 	httpError(w, err)
-}
-
-func httpInfo(w http.ResponseWriter, msg any) {
-	httpMessage(w, http.StatusOK, "info", fmt.Sprint(msg))
 }
 
 func httpMessage(w http.ResponseWriter, code int, label string, msg string) {
@@ -143,14 +135,22 @@ func httpMessage(w http.ResponseWriter, code int, label string, msg string) {
 	fmt.Fprintf(w, "{%q: %q}\n", label, msg)
 }
 
-func httpJSON(w http.ResponseWriter, output any, codes ...int) {
-	code := http.StatusOK
-	if len(codes) > 0 {
-		code = codes[0]
+// Output sends a JSON-encoded output.
+func Output(w http.ResponseWriter, output any) {
+	// if the returned type is a string, output it as a "info" message:
+	if s, ok := output.(string); ok {
+		httpMessage(w, http.StatusOK, "info", s)
+		return
+	}
+
+	// if the returned type is a []byte, output it directly:
+	if b, ok := output.([]byte); ok {
+		w.Write(b)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
+	w.WriteHeader(http.StatusOK)
 	e := json.NewEncoder(w)
 	err := e.Encode(output)
 	if err != nil {
