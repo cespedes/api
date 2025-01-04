@@ -33,21 +33,26 @@ func NewServer() *Server {
 	return &s
 }
 
-// ServeHTTP creates a Request, runs the middleware functions,
-// and dispatches the HTTP request to the correct handler from
-// those registered in the server.
+// ServeHTTP sets the variables in the Request,
+// runs the middleware functions,
+// and dispatches the HTTP request to the correct handler
+// from those registered in the server.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.debug {
 		log.Printf("api.Server.ServeHTTP: new request: %v", r.URL)
 	}
-	req := s.newRequest(r)
+
+	for key, val := range s.values {
+		r = Set(r, key, val)
+	}
+
 	s.once.Do(func() {
 		s.handler = s.mux
 		for i := len(s.middlewares) - 1; i >= 0; i-- {
 			s.handler = s.middlewares[i](s.handler)
 		}
 	})
-	s.handler.ServeHTTP(w, req.Request)
+	s.handler.ServeHTTP(w, r)
 }
 
 // AddMiddleware adds a new middleware to the Server.
@@ -137,38 +142,22 @@ func (s *Server) Get(key string) any {
 	return s.values[key]
 }
 
-// Request encapsulates a *http.Request to be able to use the Get and Set methods.
-type Request struct {
-	*http.Request
-}
-
-// newRequest initializes a Request, adding the values previously set in the Server.
-func (s *Server) newRequest(r *http.Request) *Request {
-	req := Request{
-		Request: r,
-	}
-	for key, val := range s.values {
-		req.Set(key, val)
-	}
-	return &req
-}
-
 type contextServerKey struct{}
 
 // Set assigns a value to a given key for this Request.
 // Calls to Request.Set must not be concurrent.
-func (r *Request) Set(key string, value any) {
-	m, ok := r.Request.Context().Value(contextServerKey{}).(map[string]any)
+func Set(r *http.Request, key string, value any) *http.Request {
+	m, ok := r.Context().Value(contextServerKey{}).(map[string]any)
 	if !ok {
 		m = make(map[string]any)
 	}
 	m[key] = value
-	r.Request = r.Request.WithContext(context.WithValue(r.Request.Context(), contextServerKey{}, m))
+	return r.WithContext(context.WithValue(r.Context(), contextServerKey{}, m))
 }
 
 // Get retrieves a value from a given key in this Request.
-func (r *Request) Get(key string) any {
-	c := r.Request.Context()
+func Get(r *http.Request, key string) any {
+	c := r.Context()
 	m, ok := c.Value(contextServerKey{}).(map[string]any)
 	if !ok {
 		return nil
@@ -181,8 +170,8 @@ func (r *Request) Get(key string) any {
 // handler must be not null, and one of:
 //   - http.Handler
 //   - func (http.ResponseWriter, *http.Request)
-//   - func [Input, Output any] (*Request, Input) (Output, error)
-//   - func [Output any] (*Request) (Output, error)
+//   - func [Input, Output any] (*http.Request, Input) (Output, error)
+//   - func [Output any] (*http.Request) (Output, error)
 func checkHandler(handler any) {
 	if handler == nil {
 		panic("error: nil handler")
@@ -204,8 +193,8 @@ func checkHandler(handler any) {
 	if _, ok := handler.(func(http.ResponseWriter, *http.Request)); ok {
 		return
 	}
-	if t.In(0) != reflect.TypeOf(&Request{}) {
-		panic("handler: first argument of function must have type *api.Request")
+	if t.In(0) != reflect.TypeOf(&http.Request{}) {
+		panic("handler: first argument of function must have type *http.Request")
 	}
 	if t.NumOut() != 2 {
 		panic("handler: function must have 2 return values")
@@ -215,7 +204,7 @@ func checkHandler(handler any) {
 	}
 }
 
-func checkPermFuncs(r *Request, permFuncs ...func(*Request) bool) bool {
+func checkPermFuncs(r *http.Request, permFuncs ...func(*http.Request) bool) bool {
 	// if there are permFuncs, at least one of them must succeed
 	if len(permFuncs) > 0 {
 		for _, p := range permFuncs {
@@ -230,11 +219,9 @@ func checkPermFuncs(r *Request, permFuncs ...func(*Request) bool) bool {
 
 // handleWithPerm is a wrapper that executes the provided handler unless all the
 // permFuncs fail
-func handleWithPerm(handler http.Handler, permFuncs ...func(*Request) bool) http.Handler {
+func handleWithPerm(handler http.Handler, permFuncs ...func(*http.Request) bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := &Request{r}
-
-		if !checkPermFuncs(req, permFuncs...) {
+		if !checkPermFuncs(r, permFuncs...) {
 			httpCodeError(w, http.StatusUnauthorized, "permission denied")
 			return
 		}
@@ -247,7 +234,7 @@ func handleWithPerm(handler http.Handler, permFuncs ...func(*Request) bool) http
 //
 // The function to be called when the server receives
 // a petition matching the pattern will be Handler(handler, permFuncs...)
-func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*Request) bool) {
+func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*http.Request) bool) {
 	if s == nil {
 		panic("api.Handle: called with nil Server")
 	}
@@ -264,14 +251,14 @@ func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*Request)
 // handler must be a function with one of these signatures:
 //   - http.Handler
 //   - func (http.ResponseWriter, *http.Request)
-//   - func [Input, Output any] (*Request, Input) (Output, error)
-//   - func [Output any] (*Request) (Output, error)
+//   - func [Input, Output any] (*http.Request, Input) (Output, error)
+//   - func [Output any] (*http.Request) (Output, error)
 //
 // If there are permFuncs, at least one of them must succeed.
 //
 // If the error returned by the function implements HTTPStatus,
 // it is used as the HTTP Status code to be returned.
-func Handler(handler any, permFuncs ...func(*Request) bool) http.Handler {
+func Handler(handler any, permFuncs ...func(*http.Request) bool) http.Handler {
 	checkHandler(handler)
 	if h, ok := handler.(http.Handler); ok {
 		return handleWithPerm(h, permFuncs...)
@@ -287,14 +274,13 @@ func Handler(handler any, permFuncs ...func(*Request) bool) http.Handler {
 		tinput = t.In(1)
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := &Request{r}
-		if !checkPermFuncs(req, permFuncs...) {
+		if !checkPermFuncs(r, permFuncs...) {
 			httpCodeError(w, http.StatusUnauthorized, "permission denied")
 			return
 		}
 		var out []reflect.Value
 		if nargs == 1 {
-			out = v.Call([]reflect.Value{reflect.ValueOf(req)})
+			out = v.Call([]reflect.Value{reflect.ValueOf(r)})
 		} else {
 			if r.ContentLength == 0 {
 				httpError(w, "no body supplied")
@@ -308,7 +294,7 @@ func Handler(handler any, permFuncs ...func(*Request) bool) http.Handler {
 				return
 			}
 
-			out = v.Call([]reflect.Value{reflect.ValueOf(req), reflect.ValueOf(input).Elem()})
+			out = v.Call([]reflect.Value{reflect.ValueOf(r), reflect.ValueOf(input).Elem()})
 		}
 		output := out[0].Interface()
 		var err error
@@ -346,7 +332,7 @@ func (ws *Conn) Write(msg []byte) (n int, err error) {
 // HandlerWS returns a handler that tries to establish a Websocket connection,
 // and calls handlerWS on success.  If it does not success, and handlerOther
 // is not nil, it uses that other handler.
-func HandlerWS(handler func(*Request, *Conn), handlerOther any) http.Handler {
+func HandlerWS(handler func(*http.Request, *Conn), handlerOther any) http.Handler {
 	if handlerOther != nil {
 		checkHandler(handlerOther)
 	}
@@ -361,8 +347,7 @@ func HandlerWS(handler func(*Request, *Conn), handlerOther any) http.Handler {
 		}
 		h := websocket.Server{Handler: func(ws *websocket.Conn) {
 			conn := &Conn{ws}
-			req := &Request{r}
-			handler(req, conn)
+			handler(r, conn)
 		}}
 		h.ServeHTTP(w, r)
 	})

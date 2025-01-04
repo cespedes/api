@@ -34,31 +34,31 @@ func TestHandler(t *testing.T) {
 	shouldPanic(3)
 	shouldPanic("")
 	// Function must not be nil:
-	var f func(*Request) (any, error)
+	var f func(*http.Request) (any, error)
 	shouldPanic(f)
 	// If not an ordinary HYP handler, the function should have 1 or 2 input arguments:
 	shouldPanic(func() {})
 	shouldPanic(func() (string, error) { return "", nil })
-	shouldPanic(func(*Request, int, int) {})
-	shouldPanic(func(*Request, int, int) (string, error) { return "", nil })
-	// The first argument must be a *Request:
+	shouldPanic(func(*http.Request, int, int) {})
+	shouldPanic(func(*http.Request, int, int) (string, error) { return "", nil })
+	// The first argument must be a *http.Request:
 	shouldPanic(func(int) (string, error) { return "", nil })
 	shouldPanic(func(string) (string, error) { return "", nil })
 	// There must be 2 return values:
-	shouldPanic(func(*Request) int { return 0 })
-	shouldPanic(func(*Request, int) int { return 0 })
-	shouldPanic(func(*Request) (int, error, int) { return 0, nil, 0 })
-	shouldPanic(func(*Request, int) (int, error, int) { return 0, nil, 0 })
+	shouldPanic(func(*http.Request) int { return 0 })
+	shouldPanic(func(*http.Request, int) int { return 0 })
+	shouldPanic(func(*http.Request) (int, error, int) { return 0, nil, 0 })
+	shouldPanic(func(*http.Request, int) (int, error, int) { return 0, nil, 0 })
 	// Second return value must be error:
-	shouldPanic(func(*Request) (int, int) { return 0, 0 })
-	shouldPanic(func(*Request, int) (int, int) { return 0, 0 })
-	shouldPanic(func(*Request) (int, string) { return 0, "" })
-	shouldPanic(func(*Request, int) (int, string) { return 0, "" })
-	shouldPanic(func(*Request) (int, any) { return 0, nil })
-	shouldPanic(func(*Request, int) (int, any) { return 0, nil })
+	shouldPanic(func(*http.Request) (int, int) { return 0, 0 })
+	shouldPanic(func(*http.Request, int) (int, int) { return 0, 0 })
+	shouldPanic(func(*http.Request) (int, string) { return 0, "" })
+	shouldPanic(func(*http.Request, int) (int, string) { return 0, "" })
+	shouldPanic(func(*http.Request) (int, any) { return 0, nil })
+	shouldPanic(func(*http.Request, int) (int, any) { return 0, nil })
 
 	// These should not panic:
 	shouldNotPanic(func(w http.ResponseWriter, r *http.Request) {}) // ordinary HTTP handler
-	shouldNotPanic(func(*Request, any) (any, error) { return nil, nil })
-	shouldNotPanic(func(*Request) (any, error) { return nil, nil })
+	shouldNotPanic(func(*http.Request, any) (any, error) { return nil, nil })
+	shouldNotPanic(func(*http.Request) (any, error) { return nil, nil })
 }
