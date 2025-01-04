@@ -145,7 +145,6 @@ func (s *Server) Get(key string) any {
 type contextServerKey struct{}
 
 // Set assigns a value to a given key for this Request.
-// Calls to Request.Set must not be concurrent.
 func Set(r *http.Request, key string, value any) *http.Request {
 	m, ok := r.Context().Value(contextServerKey{}).(map[string]any)
 	if !ok {
