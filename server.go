@@ -292,6 +292,10 @@ func Handler(handler any, permFuncs ...func(*http.Request) bool) http.Handler {
 				httpError(w, "parsing body: %w", err)
 				return
 			}
+			if input == nil {
+				httpError(w, "unexpected null value in body")
+				return
+			}
 
 			out = v.Call([]reflect.Value{reflect.ValueOf(r), reflect.ValueOf(input).Elem()})
 		}
