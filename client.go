@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -85,15 +86,20 @@ func (c *Client) WithUnixSocket(socket string) *Client {
 // If data is not a []byte, it will be encoding as a JSON object.
 func (c *Client) Request(method, URL string, data any, dest any) error {
 	var err error
-	var b []byte
-	switch d := data.(type) {
-	case []byte:
-		b = d
-	default:
-		b, err = json.Marshal(data)
-		if err != nil {
-			return err
+	var body io.Reader
+
+	if data != nil {
+		var b []byte
+		switch d := data.(type) {
+		case []byte:
+			b = d
+		default:
+			b, err = json.Marshal(data)
+			if err != nil {
+				return err
+			}
 		}
+		body = bytes.NewBuffer(b)
 	}
 
 	// make headerToken and tokenPrefix the default values if needed, but only for this call.
@@ -119,7 +125,7 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 		u.RawQuery = v.Encode()
 	}
 
-	req, err := http.NewRequest(method, u.String(), bytes.NewBuffer(b))
+	req, err := http.NewRequest(method, u.String(), body)
 	if err != nil {
 		return err
 	}
@@ -170,7 +176,7 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 
 // Get makes a HTTP GET request to the API.
 func (c *Client) Get(url string, dest any) error {
-	return c.Request("GET", url, []byte(nil), dest)
+	return c.Request("GET", url, nil, dest)
 }
 
 // Post makes a HTTP POST request to the API.
