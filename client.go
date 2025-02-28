@@ -155,7 +155,7 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 		}
 		decoder := json.NewDecoder(resp.Body)
 		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(dest); err != nil {
+		if err := decoder.Decode(&foo); err != nil {
 			return fmt.Errorf("%s", resp.Status)
 		}
 		return fmt.Errorf("%s: %s", resp.Status, foo.Error)
