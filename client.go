@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 const (
@@ -111,11 +112,11 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 		}
 	}
 
-	u, err := url.Parse(c.apiEndPoint)
+	// We use this instead of url.JoinPath because the latter removes possible query parameters
+	u, err := url.Parse(strings.TrimSuffix(c.apiEndPoint, "/") + "/" + strings.TrimPrefix(URL, "/"))
 	if err != nil {
 		return err
 	}
-	u = u.JoinPath(URL)
 	if c.apiToken != "" && c.paramToken != "" {
 		v, err := url.ParseQuery(u.RawQuery)
 		if err != nil {
