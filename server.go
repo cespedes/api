@@ -255,7 +255,7 @@ func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*http.Req
 //
 // If there are permFuncs, at least one of them must succeed.
 //
-// If the error returned by the function implements HTTPStatus,
+// If the error returned by the function implements [HTTPStatus],
 // it is used as the HTTP Status code to be returned.
 func Handler(handler any, permFuncs ...func(*http.Request) bool) http.Handler {
 	checkHandler(handler)

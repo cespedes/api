@@ -23,7 +23,6 @@ import (
 //   - HTTPStatus    -> (none)
 //   - httpError     -> httpMessage
 //   - httpCodeError -> HTTPError, httpError
-//   - apiError      -> errHTTPStatus, HTTPError
 //   - httpMessage   -> (none)
 
 // Errors...:
@@ -44,31 +43,6 @@ func (e errHTTPStatus) HTTPStatus() int {
 	return e.Status
 }
 
-// Error returns an errHTTPStatus from another error or a printf-like string.
-// The default HTTP status code is BadRequest.
-func apiError(f any, a ...any) error {
-	if err, ok := f.(errHTTPStatus); ok {
-		return err
-	}
-
-	var err error
-	if e, ok := f.(error); ok {
-		err = e
-	} else if s, ok := f.(string); ok {
-		err = fmt.Errorf(s, a...)
-	} else {
-		err = errors.New(fmt.Sprint(f))
-	}
-
-	code := http.StatusBadRequest
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		code = http.StatusNotFound
-		err = errors.New("not found")
-	}
-	return HTTPError(code, err)
-}
-
 // HTTPError returns an error with an embedded HTTP status code
 func HTTPError(code int, f any, a ...any) error {
 	var err error
@@ -86,6 +60,8 @@ func HTTPError(code int, f any, a ...any) error {
 	}
 }
 
+// If HTTPStatus is implemented by the error returned by a handler
+// used in [Handler], it is user as the HTTP Status code to be returned.
 type HTTPStatus interface {
 	HTTPStatus() int
 }

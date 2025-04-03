@@ -47,8 +47,8 @@ func TestHandler(t *testing.T) {
 	// There must be 2 return values:
 	shouldPanic(func(*http.Request) int { return 0 })
 	shouldPanic(func(*http.Request, int) int { return 0 })
-	shouldPanic(func(*http.Request) (int, error, int) { return 0, nil, 0 })
-	shouldPanic(func(*http.Request, int) (int, error, int) { return 0, nil, 0 })
+	shouldPanic(func(*http.Request) (int, int, error) { return 0, 0, nil })
+	shouldPanic(func(*http.Request, int) (int, int, error) { return 0, 0, nil })
 	// Second return value must be error:
 	shouldPanic(func(*http.Request) (int, int) { return 0, 0 })
 	shouldPanic(func(*http.Request, int) (int, int) { return 0, 0 })
