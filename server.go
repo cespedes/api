@@ -281,16 +281,14 @@ func Handler(handler any, permFuncs ...func(*http.Request) bool) http.Handler {
 		if nargs == 1 {
 			out = v.Call([]reflect.Value{reflect.ValueOf(r)})
 		} else {
-			if r.ContentLength == 0 {
-				httpError(w, "no body supplied")
-				return
-			}
 			decoder := json.NewDecoder(r.Body)
 			decoder.DisallowUnknownFields()
 			input := reflect.New(tinput).Interface()
-			if err := decoder.Decode(&input); err != nil {
-				httpError(w, "parsing body: %w", err)
-				return
+			if r.ContentLength != 0 {
+				if err := decoder.Decode(&input); err != nil {
+					httpError(w, "parsing body: %w", err)
+					return
+				}
 			}
 			if input == nil {
 				httpError(w, "unexpected null value in body")
