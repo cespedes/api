@@ -60,8 +60,9 @@ func HTTPError(code int, f any, a ...any) error {
 	}
 }
 
-// If HTTPStatus is implemented by the error returned by a handler
-// used in [Handler], it is user as the HTTP Status code to be returned.
+// If HTTPStatus is implemented by the output or the error returned
+// by a handler used in [Handler], it is user as the HTTP Status code
+// to be returned.
 type HTTPStatus interface {
 	HTTPStatus() int
 }
@@ -111,30 +112,59 @@ func httpMessage(w http.ResponseWriter, code int, label string, msg string) {
 	fmt.Fprintf(w, "{%q: %q}\n", label, msg)
 }
 
-// Output sends a JSON-encoded output.
-func Output(w http.ResponseWriter, output any) {
-	if err, ok := output.(error); ok {
+// output sends a JSON-encoded output.
+func output(w http.ResponseWriter, out any) {
+	if err, ok := out.(error); ok {
 		httpError(w, err)
 		return
 	}
 
 	// if the returned type is a string, output it as a "info" message:
-	if s, ok := output.(string); ok {
+	if s, ok := out.(string); ok {
 		httpMessage(w, http.StatusOK, "info", s)
 		return
 	}
 
 	// if the returned type is a []byte, output it directly:
-	if b, ok := output.([]byte); ok {
+	if b, ok := out.([]byte); ok {
 		w.Write(b)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+
+	code := http.StatusOK
+	if hs, ok := out.(HTTPStatus); ok {
+		code = hs.HTTPStatus()
+	}
+	w.WriteHeader(code)
+
 	e := json.NewEncoder(w)
-	err := e.Encode(output)
+	err := e.Encode(out)
 	if err != nil {
 		fmt.Fprintf(w, "{\"error\": %q}\n", err.Error())
+	}
+}
+
+type outWithHTTPStatus struct {
+	status int
+	output any
+}
+
+func (o outWithHTTPStatus) HTTPStatus() int {
+	return o.status
+}
+
+func (o outWithHTTPStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(o.output)
+}
+
+// OutputWithStatus returns a value with a MarshalJSON that returns the same
+// JSON encoding as the original, and with an embedded HTTP status that is
+// returned to the client if this value is returned by a handler.
+func OutputWithStatus(status int, out any) any {
+	return outWithHTTPStatus{
+		status: status,
+		output: out,
 	}
 }

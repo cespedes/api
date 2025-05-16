@@ -299,7 +299,6 @@ func Handler(handler any, permFuncs ...func(*http.Request) bool) http.Handler {
 
 			out = v.Call([]reflect.Value{reflect.ValueOf(r), reflect.ValueOf(input).Elem()})
 		}
-		output := out[0].Interface()
 		var err error
 		if e := out[1].Interface(); e != nil {
 			err = out[1].Interface().(error)
@@ -309,7 +308,7 @@ func Handler(handler any, permFuncs ...func(*http.Request) bool) http.Handler {
 			return
 		}
 
-		Output(w, output)
+		output(w, out[0].Interface())
 	})
 }
 
