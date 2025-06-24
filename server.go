@@ -306,7 +306,7 @@ func Handler(handler any, permFuncs ...func(*http.Request) bool) http.Handler {
 			return
 		}
 
-		output(w, out[0].Interface())
+		Output(w, out[0].Interface())
 	})
 }
 

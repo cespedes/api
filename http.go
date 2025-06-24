@@ -112,8 +112,10 @@ func httpMessage(w http.ResponseWriter, code int, label string, msg string) {
 	fmt.Fprintf(w, "{%q: %q}\n", label, msg)
 }
 
-// output sends a JSON-encoded output.
-func output(w http.ResponseWriter, out any) {
+// Output sends a JSON-encoded output.
+// If out is an error, it sends a HTTP BadRequest error and a JSON object with a "error" string value.
+// If out is a []byte, it outputs it directly.
+func Output(w http.ResponseWriter, out any) {
 	if err, ok := out.(error); ok {
 		httpError(w, err)
 		return
