@@ -84,7 +84,11 @@ func (c *Client) WithUnixSocket(socket string) *Client {
 }
 
 // Request makes a HTTP request to the API.
-// If data is not a []byte, it will be encoding as a JSON object.
+//
+// If data is a []byte, it will be sent as-is; otherwise, it will be encoded using JSON.
+//
+// If dest is a pointer to a []byte, it will receive the output as-is; otherwise,
+// the output will be JSON-decoded.
 func (c *Client) Request(method, URL string, data any, dest any) error {
 	var err error
 	var body io.Reader
@@ -162,8 +166,15 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 		return fmt.Errorf("%s: %s", resp.Status, foo.Error)
 	}
 	if dest == nil {
-		var foo any
-		dest = &foo
+		return nil
+	}
+	if d, ok := dest.(*[]byte); ok {
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		*d = b
+		return nil
 	}
 	decoder := json.NewDecoder(resp.Body)
 	if c.disallowUnknownFields {
