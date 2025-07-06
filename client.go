@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"golang.org/x/net/websocket"
 )
 
 const (
@@ -25,6 +27,7 @@ type Client struct {
 	paramToken            string // What query parameter should we use to send the token (eg, "private_token")
 	disallowUnknownFields bool
 	unixSocket            string
+	websocketOrigin       string
 }
 
 // NewClient creates a new Client ready to use.
@@ -83,6 +86,14 @@ func (c *Client) WithUnixSocket(socket string) *Client {
 	return c2
 }
 
+// WithWebsocketOrigin adds a custom "Origin" header in the websocket connections.
+func (c *Client) WithWebsocketOrigin(origin string) *Client {
+	c2 := new(Client)
+	*c2 = *c
+	c2.websocketOrigin = origin
+	return c2
+}
+
 // Request makes a HTTP request to the API.
 //
 // If data is a []byte, it will be sent as-is; otherwise, it will be encoded using JSON.
@@ -107,40 +118,17 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 		body = bytes.NewBuffer(b)
 	}
 
-	// make headerToken and tokenPrefix the default values if needed, but only for this call.
-	headerToken, tokenPrefix := c.headerToken, c.tokenPrefix
-	if c.apiToken != "" && headerToken == "" && c.paramToken == "" {
-		headerToken = defaultHeaderToken
-		if tokenPrefix == "" {
-			tokenPrefix = defaultTokenPrefix
-		}
-	}
-
-	// We use this instead of url.JoinPath because the latter removes possible query parameters
-	u, err := url.Parse(strings.TrimSuffix(c.apiEndPoint, "/") + "/" + strings.TrimPrefix(URL, "/"))
+	header := make(http.Header)
+	u, err := c.urlAndHeader(URL, header)
 	if err != nil {
 		return err
 	}
-	if c.apiToken != "" && c.paramToken != "" {
-		v, err := url.ParseQuery(u.RawQuery)
-		if err != nil {
-			return err
-		}
-		v.Add(c.paramToken, c.apiToken)
-		u.RawQuery = v.Encode()
-	}
-
 	req, err := http.NewRequest(method, u.String(), body)
 	if err != nil {
 		return err
 	}
-	if c.apiToken != "" && headerToken != "" {
-		token := c.apiToken
-		if tokenPrefix != "" {
-			token = tokenPrefix + " " + token
-		}
-		req.Header.Set(headerToken, token)
-	}
+	req.Header = header
+
 	client := &http.Client{}
 	if c.unixSocket != "" {
 		client.Transport = &http.Transport{
@@ -187,21 +175,87 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 }
 
 // Get makes a HTTP GET request to the API.
-func (c *Client) Get(url string, dest any) error {
-	return c.Request("GET", url, nil, dest)
+func (c *Client) Get(URL string, dest any) error {
+	return c.Request("GET", URL, nil, dest)
 }
 
 // Post makes a HTTP POST request to the API.
-func (c *Client) Post(url string, data any, dest any) error {
-	return c.Request("POST", url, data, dest)
+func (c *Client) Post(URL string, data any, dest any) error {
+	return c.Request("POST", URL, data, dest)
 }
 
 // Put makes a HTTP PUT request to the API.
-func (c *Client) Put(url string, data any, dest any) error {
-	return c.Request("PUT", url, data, dest)
+func (c *Client) Put(URL string, data any, dest any) error {
+	return c.Request("PUT", URL, data, dest)
 }
 
 // Delete makes a HTTP DELETE request to the API.
-func (c *Client) Delete(url string, dest any) error {
-	return c.Request("DELETE", url, []byte(nil), dest)
+func (c *Client) Delete(URL string, dest any) error {
+	return c.Request("DELETE", URL, []byte(nil), dest)
+}
+
+// WS makes a websocket connection to the API.
+// User must close the connection after it is no longer needed.
+func (c *Client) WS(URL string) (*websocket.Conn, error) {
+	origin := "http://localhost/"
+	if c.websocketOrigin != "" {
+		origin = c.websocketOrigin
+	}
+
+	header := make(http.Header)
+	u, err := c.urlAndHeader(URL, header)
+	if err != nil {
+		return nil, err
+	}
+	switch u.Scheme {
+	case "http":
+		u.Scheme = "ws"
+	case "https":
+		u.Scheme = "wss"
+	}
+	config, err := websocket.NewConfig(u.String(), origin)
+	if err != nil {
+		return nil, err
+	}
+	config.Header = header
+
+	ws, err := websocket.DialConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	return ws, nil
+}
+
+func (c *Client) urlAndHeader(URL string, header http.Header) (*url.URL, error) {
+	// make headerToken and tokenPrefix the default values if needed, but only for this call.
+	headerToken, tokenPrefix := c.headerToken, c.tokenPrefix
+	if c.apiToken != "" && headerToken == "" && c.paramToken == "" {
+		headerToken = defaultHeaderToken
+		if tokenPrefix == "" {
+			tokenPrefix = defaultTokenPrefix
+		}
+	}
+
+	// We use this instead of url.JoinPath because the latter removes possible query parameters
+	u, err := url.Parse(strings.TrimSuffix(c.apiEndPoint, "/") + "/" + strings.TrimPrefix(URL, "/"))
+	if err != nil {
+		return nil, err
+	}
+	if c.apiToken != "" && c.paramToken != "" {
+		v, err := url.ParseQuery(u.RawQuery)
+		if err != nil {
+			return nil, err
+		}
+		v.Add(c.paramToken, c.apiToken)
+		u.RawQuery = v.Encode()
+	}
+
+	if c.apiToken != "" && headerToken != "" {
+		token := c.apiToken
+		if tokenPrefix != "" {
+			token = tokenPrefix + " " + token
+		}
+		header.Set(headerToken, token)
+	}
+	return u, nil
 }
