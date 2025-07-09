@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -25,6 +26,7 @@ func main() {
 }
 
 const (
+	defaultEmptyArg    = "c7fe09e3-23a2-4b76-a1c6-c23bc667f41c"
 	defaultHeaderToken = "Authorization"
 	defaultTokenPrefix = "Bearer"
 )
@@ -43,6 +45,9 @@ type Client struct {
 	// What to do
 	method   string // GET, POST, PUT, DELETE or WS (for websocket)
 	endpoint string
+
+	// Other things
+	debug bool
 }
 
 func run(args []string) error {
@@ -65,15 +70,60 @@ func NewClient(args []string) (*Client, error) {
 
 	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
 
+	params := []struct {
+		Name        string
+		Addr        *string
+		Default     string
+		Description string
+	}{
+		{
+			Name:        "api",
+			Addr:        &c.apiEndPoint,
+			Default:     "",
+			Description: "API URL",
+		},
+		{
+			Name:        "token",
+			Addr:        &c.apiToken,
+			Default:     "",
+			Description: "API key or token",
+		},
+		{
+			Name:        "header",
+			Addr:        &c.headerToken,
+			Default:     "",
+			Description: "header to use to send the token (default \"Authorization\")",
+		},
+		{
+			Name:        "token-prefix",
+			Addr:        &c.tokenPrefix,
+			Default:     "",
+			Description: "word to send in header before the token (default \"Bearer\")",
+		},
+		{
+			Name:        "token-param",
+			Addr:        &c.paramToken,
+			Default:     "",
+			Description: "query parameter to use to send the token (eg, \"private_token\")",
+		},
+	}
+
 	flags.StringVar(&c.name, "name", "", "name of this service")
-	flags.StringVar(&c.apiEndPoint, "api", "", "API URL")
-	flags.StringVar(&c.apiToken, "token", "", "API token")
-	flags.StringVar(&c.tokenPrefix, "token-prefix", "Bearer", "word to send in header before the token")
-	flags.StringVar(&c.headerToken, "header", "Authorization", "header to use to send the token")
+	flags.BoolVar(&c.debug, "debug", false, "debugging information")
+
+	for _, p := range params {
+		flags.StringVar(p.Addr, p.Name, p.Default, p.Description)
+	}
 
 	err := flags.Parse(args[1:])
 	if err != nil {
 		return nil, err
+	}
+
+	for _, p := range params {
+		if !flagIsSet(flags, p.Name) {
+			*p.Addr = defaultEmptyArg
+		}
 	}
 
 	if c.name == "" {
@@ -85,9 +135,92 @@ func NewClient(args []string) (*Client, error) {
 	}
 
 	// I will now get default values from filesystem and environment variables
+	// TODO FIXME XXX
+	// Order of precedence, from least preferred to most preferred:
+	//   - /etc/name-api.conf
+	//   - /etc/name-api.json
+	//   - /etc/name-api and /etc/name-token
+	//   - $HOME/.name-api.conf
+	//   - $HOME/.name-api.json
+	//   - $HOME/.name-api and $HOME/.name-token
+	//   - $NAME_API and $NAME_TOKEN
+	if c.name != "" {
+		readConfigFromFile := func(fname string) {
+			b, err := os.ReadFile(fname)
+			if err != nil {
+				return
+			}
+			var m map[string]any
+			err = json.Unmarshal(b, &m)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error unmarshaling %s: %v\n", fname, err)
+				return
+			}
+			for _, p := range params {
+				x := m[p.Name]
+				if s, ok := x.(string); ok && *p.Addr == defaultEmptyArg {
+					*p.Addr = s
+				}
+			}
+		}
+		NAME := strings.ToUpper(c.name)
+		if endpoint, ok := os.LookupEnv(fmt.Sprintf("%s_API", NAME)); ok {
+			if c.apiEndPoint == defaultEmptyArg {
+				c.apiEndPoint = endpoint
+			}
+		}
+		if token, ok := os.LookupEnv(fmt.Sprintf("%s_TOKEN", NAME)); ok {
+			if c.apiToken == defaultEmptyArg {
+				c.apiToken = token
+			}
+		}
+		if home, ok := os.LookupEnv("HOME"); ok {
+			if endpoint, err := os.ReadFile(fmt.Sprintf("%s/.%s-api", home, c.name)); err == nil {
+				if c.apiEndPoint == defaultEmptyArg {
+					c.apiEndPoint = strings.TrimSpace(string(endpoint))
+				}
+			}
+			if token, err := os.ReadFile(fmt.Sprintf("%s/.%s-token", home, c.name)); err == nil {
+				if c.apiToken == defaultEmptyArg {
+					c.apiToken = strings.TrimSpace(string(token))
+				}
+			}
+			readConfigFromFile(fmt.Sprintf("%s/.%s-api.json", home, c.name))
+			readConfigFromFile(fmt.Sprintf("%s/.%s-api.conf", home, c.name))
+		}
+		if endpoint, err := os.ReadFile(fmt.Sprintf("/etc/%s-api", c.name)); err == nil {
+			if c.apiEndPoint == defaultEmptyArg {
+				c.apiEndPoint = strings.TrimSpace(string(endpoint))
+			}
+		}
+		if token, err := os.ReadFile(fmt.Sprintf("/etc/%s-token", c.name)); err == nil {
+			if c.apiToken == defaultEmptyArg {
+				c.apiToken = strings.TrimSpace(string(token))
+			}
+		}
+		readConfigFromFile(fmt.Sprintf("/etc/.%s-api.json", c.name))
+		readConfigFromFile(fmt.Sprintf("/etc/.%s-api.conf", c.name))
+	}
+
+	if c.headerToken == defaultEmptyArg && c.paramToken == defaultEmptyArg {
+		c.headerToken = defaultHeaderToken
+		if c.tokenPrefix == defaultEmptyArg {
+			c.tokenPrefix = defaultTokenPrefix
+		}
+	}
+	for _, p := range params {
+		if *p.Addr == defaultEmptyArg {
+			*p.Addr = ""
+		}
+	}
+
+	if c.apiEndPoint == "" && c.name == "" {
+		return c, fmt.Errorf("cannot find API service")
+	}
 
 	if c.apiEndPoint == "" {
-		return c, fmt.Errorf("missing API URL")
+		return c, fmt.Errorf("cannot find API URL in args, $%s_API, ~/.%s-api or /etc/%s-api",
+			strings.ToUpper(c.name), c.name, c.name)
 	}
 
 	if len(flags.Args()) != 2 {
@@ -96,9 +229,6 @@ func NewClient(args []string) (*Client, error) {
 	c.method = flags.Arg(0)
 	c.endpoint = flags.Arg(1)
 
-	if flagIsSet(flags, "header") {
-		fmt.Println("XXX flag header is set")
-	}
 	return c, nil
 }
 
@@ -206,6 +336,23 @@ func (c *Client) Request(method, endpoint string) error {
 		return err
 	}
 	resp.Body.Close()
+
+	if c.debug {
+		fmt.Printf("> %s %s\n", method, u.String())
+		for k, v := range header {
+			for _, v2 := range v {
+				fmt.Printf("> %s: %s\n", k, v2)
+			}
+		}
+		fmt.Println()
+		fmt.Printf("%s %s\n", resp.Proto, resp.Status)
+		for k, v := range resp.Header {
+			for _, v2 := range v {
+				fmt.Printf("%s: %s\n", k, v2)
+			}
+		}
+		fmt.Println()
+	}
 
 	if term.IsTerminal(1) {
 		p := pretty.Pretty(b)
