@@ -45,6 +45,7 @@ type Client struct {
 	// What to do
 	method   string // GET, POST, PUT, DELETE or WS (for websocket)
 	endpoint string
+	body     string
 
 	// Other things
 	debug bool
@@ -60,7 +61,7 @@ func run(args []string) error {
 	case "WS":
 		err = c.WS(c.endpoint)
 	default:
-		err = c.Request(c.method, c.endpoint)
+		err = c.Request(c.method, c.endpoint, c.body)
 	}
 	return err
 }
@@ -135,15 +136,14 @@ func NewClient(args []string) (*Client, error) {
 	}
 
 	// I will now get default values from filesystem and environment variables
-	// TODO FIXME XXX
-	// Order of precedence, from least preferred to most preferred:
-	//   - /etc/name-api.conf
-	//   - /etc/name-api.json
-	//   - /etc/name-api and /etc/name-token
-	//   - $HOME/.name-api.conf
-	//   - $HOME/.name-api.json
-	//   - $HOME/.name-api and $HOME/.name-token
+	// Order of precedence, from most preferred to least preferred:
 	//   - $NAME_API and $NAME_TOKEN
+	//   - $HOME/.name-api and $HOME/.name-token
+	//   - $HOME/.name-api.json
+	//   - $HOME/.name-api.conf
+	//   - /etc/name-api and /etc/name-token
+	//   - /etc/name-api.json
+	//   - /etc/name-api.conf
 	if c.name != "" {
 		readConfigFromFile := func(fname string) {
 			b, err := os.ReadFile(fname)
@@ -163,6 +163,7 @@ func NewClient(args []string) (*Client, error) {
 				}
 			}
 		}
+		// $NAME_API and $NAME_TOKEN
 		NAME := strings.ToUpper(c.name)
 		if endpoint, ok := os.LookupEnv(fmt.Sprintf("%s_API", NAME)); ok {
 			if c.apiEndPoint == defaultEmptyArg {
@@ -175,6 +176,7 @@ func NewClient(args []string) (*Client, error) {
 			}
 		}
 		if home, ok := os.LookupEnv("HOME"); ok {
+			// $HOME/.name-api and $HOME/.name-token
 			if endpoint, err := os.ReadFile(fmt.Sprintf("%s/.%s-api", home, c.name)); err == nil {
 				if c.apiEndPoint == defaultEmptyArg {
 					c.apiEndPoint = strings.TrimSpace(string(endpoint))
@@ -185,9 +187,11 @@ func NewClient(args []string) (*Client, error) {
 					c.apiToken = strings.TrimSpace(string(token))
 				}
 			}
+			// $HOME/.name-api.json and $HOME/.name-api.conf
 			readConfigFromFile(fmt.Sprintf("%s/.%s-api.json", home, c.name))
 			readConfigFromFile(fmt.Sprintf("%s/.%s-api.conf", home, c.name))
 		}
+		// /etc/name-api and /etc/name-token
 		if endpoint, err := os.ReadFile(fmt.Sprintf("/etc/%s-api", c.name)); err == nil {
 			if c.apiEndPoint == defaultEmptyArg {
 				c.apiEndPoint = strings.TrimSpace(string(endpoint))
@@ -198,6 +202,7 @@ func NewClient(args []string) (*Client, error) {
 				c.apiToken = strings.TrimSpace(string(token))
 			}
 		}
+		// /etc/name-api.json and /etc/name-api.conf
 		readConfigFromFile(fmt.Sprintf("/etc/.%s-api.json", c.name))
 		readConfigFromFile(fmt.Sprintf("/etc/.%s-api.conf", c.name))
 	}
@@ -223,11 +228,12 @@ func NewClient(args []string) (*Client, error) {
 			strings.ToUpper(c.name), c.name, c.name)
 	}
 
-	if len(flags.Args()) != 2 {
-		return c, fmt.Errorf("missing method and endpoint")
+	if len(flags.Args()) < 2 || len(flags.Args()) > 3 {
+		return c, fmt.Errorf("usage: %s [options] METHOD /endpoint [body]", path.Base(args[0]))
 	}
 	c.method = flags.Arg(0)
 	c.endpoint = flags.Arg(1)
+	c.body = flags.Arg(2)
 
 	return c, nil
 }
@@ -307,13 +313,13 @@ func (c *Client) WS(endpoint string) error {
 	return nil
 }
 
-func (c *Client) Request(method, endpoint string) error {
+func (c *Client) Request(method, endpoint string, body string) error {
 	header := make(http.Header)
 	u, err := c.urlAndHeader(endpoint, header)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(method, u.String(), nil)
+	req, err := http.NewRequest(method, u.String(), strings.NewReader(body))
 	if err != nil {
 		return err
 	}
