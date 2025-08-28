@@ -41,6 +41,7 @@ type Client struct {
 	paramToken      string // What query parameter should we use to send the token (eg, "private_token")
 	unixSocket      string
 	websocketOrigin string
+	stdin           bool // read request body from stdin
 
 	// What to do
 	method   string // GET, POST, PUT, DELETE or WS (for websocket)
@@ -111,6 +112,11 @@ func NewClient(args []string) (*Client, error) {
 
 	flags.StringVar(&c.name, "name", "", "name of this service")
 	flags.BoolVar(&c.debug, "debug", false, "debugging information")
+	flags.BoolVar(&c.stdin, "stdin", false, "read request body from stdin")
+	flags.Usage = func() {
+		fmt.Fprintf(flags.Output(), "Usage: %s [options] METHOD /endpoint [body]\n", args[0])
+		flags.PrintDefaults()
+	}
 
 	for _, p := range params {
 		flags.StringVar(p.Addr, p.Name, p.Default, p.Description)
@@ -229,11 +235,25 @@ func NewClient(args []string) (*Client, error) {
 	}
 
 	if len(flags.Args()) < 2 || len(flags.Args()) > 3 {
-		return c, fmt.Errorf("usage: %s [options] METHOD /endpoint [body]", path.Base(args[0]))
+		fmt.Fprintln(flags.Output(), "Error: incorrect number of parameters")
+		flags.Usage()
+		os.Exit(1)
 	}
 	c.method = flags.Arg(0)
 	c.endpoint = flags.Arg(1)
 	c.body = flags.Arg(2)
+	if c.stdin {
+		if c.body != "" {
+			fmt.Fprintln(flags.Output(), "Error: option '-s' cannot be used with 3 arguments.")
+			fmt.Fprintf(flags.Output(), "Try '%s --help' for more information.\n", args[0])
+			os.Exit(1)
+		}
+		b, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return c, err
+		}
+		c.body = string(b)
+	}
 
 	return c, nil
 }
