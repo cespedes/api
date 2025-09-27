@@ -380,7 +380,7 @@ func (c *Client) Request(method, endpoint string, body string) error {
 		fmt.Println()
 	}
 
-	if term.IsTerminal(1) {
+	if term.IsTerminal(1) && resp.Header.Get("Content-Type") == "application/json" {
 		p := pretty.Pretty(b)
 		b = pretty.Color(p, nil)
 	}
