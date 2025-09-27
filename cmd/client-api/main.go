@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"runtime/debug"
 	"strings"
 
 	"github.com/tidwall/pretty"
@@ -282,6 +283,17 @@ func (c *Client) urlAndHeader(URL string, header http.Header) (*url.URL, error) 
 		v.Add(c.paramToken, c.apiToken)
 		u.RawQuery = v.Encode()
 	}
+
+	// send User-Agent:
+	ua := "client-api"
+	if c.name != "" {
+		ua = c.name + "-api"
+	}
+	if buildInfo, ok := debug.ReadBuildInfo(); ok {
+		ua += "/" + buildInfo.Main.Version
+	}
+	ua += " (https://github.com/cespedes/api)"
+	header.Set("User-Agent", ua)
 
 	if c.apiToken != "" && c.headerToken != "" {
 		token := c.apiToken
