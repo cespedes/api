@@ -49,7 +49,7 @@ type Client struct {
 	body     string
 
 	// Other things
-	debug bool
+	verbose bool
 }
 
 func run(args []string) error {
@@ -111,7 +111,7 @@ func NewClient(args []string) (*Client, error) {
 	}
 
 	flags.StringVar(&c.name, "name", "", "name of this service")
-	flags.BoolVar(&c.debug, "debug", false, "debugging information")
+	flags.BoolVar(&c.verbose, "verbose", false, "show headers sent and received")
 	flags.BoolVar(&c.stdin, "stdin", false, "read request body from stdin")
 	flags.Usage = func() {
 		fmt.Fprintf(flags.Output(), "Usage: %s [options] METHOD /endpoint [body]\n", args[0])
@@ -363,7 +363,7 @@ func (c *Client) Request(method, endpoint string, body string) error {
 	}
 	resp.Body.Close()
 
-	if c.debug {
+	if c.verbose {
 		fmt.Printf("> %s %s\n", method, u.String())
 		for k, v := range header {
 			for _, v2 := range v {
