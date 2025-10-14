@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -64,6 +65,17 @@ func (c *Client) WithParamToken(pt string) *Client {
 	c2 := new(Client)
 	*c2 = *c
 	c2.paramToken = pt
+	return c2
+}
+
+// WithUserPass specifies which user and password to use with Basic authentication.
+func (c *Client) WithUserPass(user, pass string) *Client {
+	c2 := new(Client)
+	*c2 = *c
+	if c2.tokenPrefix == "" {
+		c2.tokenPrefix = "Basic"
+	}
+	c2.apiToken = base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", user, pass)))
 	return c2
 }
 
