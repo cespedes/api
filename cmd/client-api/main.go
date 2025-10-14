@@ -392,9 +392,14 @@ func (c *Client) Request(method, endpoint string, body string) error {
 		fmt.Println()
 	}
 
-	if term.IsTerminal(1) && resp.Header.Get("Content-Type") == "application/json" {
-		p := pretty.Pretty(b)
-		b = pretty.Color(p, nil)
+	if term.IsTerminal(1) {
+		contentType := resp.Header.Get("Content-Type")
+		contentType, _, _ = strings.Cut(contentType, ";")
+		contentType = strings.ToLower(strings.TrimSpace(contentType))
+		if contentType == "application/json" {
+			p := pretty.Pretty(b)
+			b = pretty.Color(p, nil)
+		}
 	}
 	fmt.Print(string(b))
 
