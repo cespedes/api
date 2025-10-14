@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -40,6 +41,7 @@ type Client struct {
 	headerToken     string // What header should we use to send the token (eg, "Authorization")
 	tokenPrefix     string // What to send before the token (eg, "Bearer", "Basic"...)
 	paramToken      string // What query parameter should we use to send the token (eg, "private_token")
+	userPassword    string // What user and password to use with "Basic" authentication
 	unixSocket      string
 	websocketOrigin string
 	stdin           bool // read request body from stdin
@@ -108,6 +110,12 @@ func NewClient(args []string) (*Client, error) {
 			Addr:        &c.paramToken,
 			Default:     "",
 			Description: "query parameter to use to send the token (eg, \"private_token\")",
+		},
+		{
+			Name:        "user",
+			Addr:        &c.userPassword,
+			Default:     "",
+			Description: "username:password to use for \"Basic\" authentication.",
 		},
 	}
 
@@ -219,6 +227,10 @@ func NewClient(args []string) (*Client, error) {
 		if c.tokenPrefix == defaultEmptyArg {
 			c.tokenPrefix = defaultTokenPrefix
 		}
+	}
+	if c.userPassword != defaultTokenPrefix {
+		c.tokenPrefix = "Basic"
+		c.apiToken = base64.StdEncoding.EncodeToString([]byte(c.userPassword))
 	}
 	for _, p := range params {
 		if *p.Addr == defaultEmptyArg {
