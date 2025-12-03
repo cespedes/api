@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -21,8 +22,10 @@ import (
 
 func main() {
 	err := run(os.Args)
+	if err != nil && err.Error() != "" {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())
+	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %s\n", err.Error())
 		os.Exit(1)
 	}
 }
@@ -228,7 +231,7 @@ func NewClient(args []string) (*Client, error) {
 			c.tokenPrefix = defaultTokenPrefix
 		}
 	}
-	if c.userPassword != defaultTokenPrefix {
+	if c.userPassword != defaultEmptyArg {
 		c.tokenPrefix = "Basic"
 		c.apiToken = base64.StdEncoding.EncodeToString([]byte(c.userPassword))
 	}
@@ -415,5 +418,8 @@ func (c *Client) Request(method, endpoint string, body string) error {
 	}
 	fmt.Print(string(b))
 
+	if resp.StatusCode >= 400 {
+		return errors.New("")
+	}
 	return nil
 }
