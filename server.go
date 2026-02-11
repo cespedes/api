@@ -23,6 +23,7 @@ type Server struct {
 	middlewares []func(http.Handler) http.Handler
 	once        sync.Once
 	handler     http.Handler
+	denyHandler http.Handler
 }
 
 // NewServer allocates and returns a new Server.
@@ -31,6 +32,12 @@ func NewServer() *Server {
 	s.mux = http.NewServeMux()
 	s.debug = false
 	return &s
+}
+
+// SetDenyHandler sets a handler to invoke when a request is rejected.
+// The default error handler responds with a 403 Forbidden status.
+func (s *Server) SetDenyHandler(h http.Handler) {
+	s.denyHandler = h
 }
 
 // ServeHTTP sets the variables in the Request,
@@ -218,9 +225,13 @@ func checkPermFuncs(r *http.Request, permFuncs ...func(*http.Request) bool) bool
 
 // handleWithPerm is a wrapper that executes the provided handler unless all the
 // permFuncs fail
-func handleWithPerm(handler http.Handler, permFuncs ...func(*http.Request) bool) http.Handler {
+func (s *Server) handleWithPerm(handler http.Handler, permFuncs ...func(*http.Request) bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !checkPermFuncs(r, permFuncs...) {
+			if s.denyHandler != nil {
+				s.denyHandler.ServeHTTP(w, r)
+				return
+			}
 			httpCodeError(w, http.StatusForbidden, "forbidden")
 			return
 		}
@@ -239,7 +250,7 @@ func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*http.Req
 	}
 	checkHandler(handler)
 	s.patterns = append(s.patterns, pattern)
-	s.mux.Handle(pattern, Handler(handler, permFuncs...))
+	s.mux.Handle(pattern, s.Handler(handler, permFuncs...))
 	if s.debug {
 		log.Printf("Added new handler: pattern=%q func=%T", pattern, handler)
 	}
@@ -257,13 +268,13 @@ func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*http.Req
 //
 // If the error returned by the function implements [HTTPStatus],
 // it is used as the HTTP Status code to be returned.
-func Handler(handler any, permFuncs ...func(*http.Request) bool) http.Handler {
+func (s *Server) Handler(handler any, permFuncs ...func(*http.Request) bool) http.Handler {
 	checkHandler(handler)
 	if h, ok := handler.(http.Handler); ok {
-		return handleWithPerm(h, permFuncs...)
+		return s.handleWithPerm(h, permFuncs...)
 	}
 	if f, ok := handler.(func(http.ResponseWriter, *http.Request)); ok {
-		return handleWithPerm(http.HandlerFunc(f), permFuncs...)
+		return s.handleWithPerm(http.HandlerFunc(f), permFuncs...)
 	}
 	t := reflect.TypeOf(handler)
 	v := reflect.ValueOf(handler)
@@ -274,6 +285,10 @@ func Handler(handler any, permFuncs ...func(*http.Request) bool) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !checkPermFuncs(r, permFuncs...) {
+			if s.denyHandler != nil {
+				s.denyHandler.ServeHTTP(w, r)
+				return
+			}
 			httpCodeError(w, http.StatusForbidden, "forbidden")
 			return
 		}
@@ -332,23 +347,25 @@ func (ws *Conn) Write(msg []byte) (n int, err error) {
 // HandlerWS returns a handler that tries to establish a Websocket connection,
 // and calls handlerWS on success.  If it does not success, and handlerOther
 // is not nil, it uses that other handler.
-func HandlerWS(handler func(*http.Request, *Conn), handlerOther any) http.Handler {
+func (s *Server) HandlerWS(handlerWS func(*http.Request, *Conn), handlerOther any) http.Handler {
 	if handlerOther != nil {
 		checkHandler(handlerOther)
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Connection") != "Upgrade" || r.Header.Get("Upgrade") != "websocket" {
 			if handlerOther != nil {
-				Handler(handlerOther).ServeHTTP(w, r)
+				s.Handler(handlerOther).ServeHTTP(w, r)
 				return
 			}
 			http.Error(w, "Bad Request: needs websocket connection", http.StatusBadRequest)
 			return
 		}
-		h := websocket.Server{Handler: func(ws *websocket.Conn) {
-			conn := &Conn{ws}
-			handler(r, conn)
-		}}
+		h := websocket.Server{
+			Handler: func(ws *websocket.Conn) {
+				conn := &Conn{ws}
+				handlerWS(r, conn)
+			},
+		}
 		h.ServeHTTP(w, r)
 	})
 }
