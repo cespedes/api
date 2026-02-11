@@ -221,7 +221,7 @@ func checkPermFuncs(r *http.Request, permFuncs ...func(*http.Request) bool) bool
 func handleWithPerm(handler http.Handler, permFuncs ...func(*http.Request) bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !checkPermFuncs(r, permFuncs...) {
-			httpCodeError(w, http.StatusUnauthorized, "permission denied")
+			httpCodeError(w, http.StatusForbidden, "forbidden")
 			return
 		}
 
@@ -274,7 +274,7 @@ func Handler(handler any, permFuncs ...func(*http.Request) bool) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !checkPermFuncs(r, permFuncs...) {
-			httpCodeError(w, http.StatusUnauthorized, "permission denied")
+			httpCodeError(w, http.StatusForbidden, "forbidden")
 			return
 		}
 		var out []reflect.Value
