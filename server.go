@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -296,7 +298,18 @@ func (s *Server) Handler(handler any, permFuncs ...func(*http.Request) bool) htt
 		if nargs == 1 {
 			out = v.Call([]reflect.Value{reflect.ValueOf(r)})
 		} else {
-			decoder := json.NewDecoder(r.Body)
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				httpError(w, "reading body: %w", err)
+				return
+			}
+			var m map[string]any
+			err = json.Unmarshal(body, &m)
+			if err == nil {
+				r = r.WithContext(context.WithValue(r.Context(), contextInputFields{}, m))
+			}
+
+			decoder := json.NewDecoder(bytes.NewReader(body))
 			decoder.DisallowUnknownFields()
 			input := reflect.New(tinput).Interface()
 			if r.ContentLength != 0 {
@@ -323,6 +336,16 @@ func (s *Server) Handler(handler any, permFuncs ...func(*http.Request) bool) htt
 
 		Output(w, out[0].Interface())
 	})
+}
+
+type contextInputFields struct{}
+
+// InputFields returns the JSON object provided as the body, if any, as a map.
+// It returns nil if the body is not a JSON object.
+func InputFields(r *http.Request) map[string]any {
+	c := r.Context()
+	ifs, _ := c.Value(contextInputFields{}).(map[string]any)
+	return ifs
 }
 
 // Conn represents a Websocket connection.

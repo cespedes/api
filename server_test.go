@@ -13,13 +13,17 @@ func TestNewServer(t *testing.T) {
 }
 
 func TestHandler(t *testing.T) {
+	s := NewServer()
+	if s == nil {
+		t.Fatal("NewServer() returned nil")
+	}
 	shouldPanic := func(h any) {
 		defer func() {
 			if recover() == nil {
 				t.Errorf("Handle() did not panic when handler's type is %T", h)
 			}
 		}()
-		_ = Handler(h)
+		_ = s.Handler(h)
 	}
 	shouldNotPanic := func(h any) {
 		defer func() {
@@ -27,7 +31,7 @@ func TestHandler(t *testing.T) {
 				t.Errorf("Handle() panic'ed with type %T when it should not have: %v", h, x)
 			}
 		}()
-		_ = Handler(h)
+		_ = s.Handler(h)
 	}
 
 	// The second argument to Handle (the handler) should be a function:
