@@ -207,7 +207,7 @@ func checkHandler(handler any) {
 	if t.NumOut() != 2 {
 		panic("handler: function must have 2 return values")
 	}
-	if t.Out(1) != reflect.TypeOf(errors.New).Out(0) {
+	if t.Out(1) != reflect.TypeFor[error]() {
 		panic("handler: second return value of function must have type error")
 	}
 }
@@ -270,6 +270,9 @@ func (s *Server) Handle(pattern string, handler any, permFuncs ...func(*http.Req
 //
 // If the error returned by the function implements [HTTPStatus],
 // it is used as the HTTP Status code to be returned.
+//
+// If Output is of type []byte, it will be sent as the response as-is;
+// otherwise, the response will be the JSON-encoded Output.
 func (s *Server) Handler(handler any, permFuncs ...func(*http.Request) bool) http.Handler {
 	checkHandler(handler)
 	if h, ok := handler.(http.Handler); ok {
