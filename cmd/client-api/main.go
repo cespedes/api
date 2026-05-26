@@ -370,6 +370,24 @@ func (c *Client) Request(method, endpoint string, body string) error {
 	if err != nil {
 		return err
 	}
+
+	// If the body is a JSON object, add "Content-Type":
+	for range 1 {
+		var v any
+		err := json.Unmarshal([]byte(body), &v)
+		if err != nil {
+			break
+		}
+		switch v.(type) {
+		case []any:
+			header.Set("Content-Type", "application/json")
+		case map[string]any:
+			header.Set("Content-Type", "application/json")
+		default:
+			break
+		}
+	}
+
 	req.Header = header
 
 	client := &http.Client{}
