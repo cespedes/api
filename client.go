@@ -116,6 +116,12 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 	var err error
 	var body io.Reader
 
+	header := make(http.Header)
+	u, err := c.urlAndHeader(URL, header)
+	if err != nil {
+		return err
+	}
+
 	if data != nil {
 		var b []byte
 		switch d := data.(type) {
@@ -126,15 +132,11 @@ func (c *Client) Request(method, URL string, data any, dest any) error {
 			if err != nil {
 				return err
 			}
+			header.Set("Content-Type", "application/json")
 		}
 		body = bytes.NewBuffer(b)
 	}
 
-	header := make(http.Header)
-	u, err := c.urlAndHeader(URL, header)
-	if err != nil {
-		return err
-	}
 	req, err := http.NewRequest(method, u.String(), body)
 	if err != nil {
 		return err
